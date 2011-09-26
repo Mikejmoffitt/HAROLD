@@ -1,0 +1,8 @@
+Orange		-> 2K resistor -> 5V
+Orange/white	-> GND
+Blue		-> 2K resistor -> 5V
+Blue/white	-> GND
+Green		-> ATTiny (w/ pull-up to 5V)
+Green/white	-> GND
+Brown		-> ATTiny (w/ pull-up to 5V)
+Brown/white	-> GND
