@@ -39,21 +39,65 @@ void serial_write_string(unsigned char* out_string)
 	}
 }
 
+void set_pin_for_input(int pin) 
+{
+	//DDRB = (DDRB & ~_BV(pin)); //PB4 = MISO, PB1 = iButton reader pin
+	DDRB = 0xE9;
+}
+
+void set_pin_for_output(int pin) 
+{
+	//DDRB = (DDRB | _BV(pin)); //PB4 = MISO, PB1 = iButton reader pin
+	DDRB = 0xEF;
+}
+
+void pull_low(int pin)
+{
+	PORTB &= ~_BV(pin);
+}
+
+void push_high(int pin)
+{
+	PORTB |= _BV(pin);
+}
+
+int pin_high(int pin)
+{
+	return !!(PINB & _BV(pin));
+}
+
+void write_bit(int pin, uint8_t b)
+{
+	set_pin_for_output(pin);
+	pull_low(pin);
+	_delay_us(5);
+	if(!b)
+	{
+		_delay_us(50);
+	}
+	push_high(pin);
+	_delay_us(5);
+	if(b)
+	{
+		_delay_us(50);
+	}
+}
+
 int find_ibutton(int pin) 
 {
 	int ibutton_found = 0; 	
 
-	DDRB = 0xEF;
-	PORTB &= ~_BV(pin);
+	set_pin_for_output(pin);
+	pull_low(pin);
 
 	// wait for 480 us to reset all devices
 	_delay_us(480);
 
 	// put wire high so that devices, if they exist, can pull it low to indicate presence
-	PORTB |= _BV(pin);
-	DDRB = 0xE9;
-		
-	if (!(!!(PINB & _BV(pin))))
+	push_high(pin);
+	set_pin_for_input(pin);
+	
+	if (!pin_high(pin))
 	{
 		return 0; // too soon, we're being shorted
 		serial_print_string("shorted!");
@@ -63,7 +107,7 @@ int find_ibutton(int pin)
 	_delay_us(60);
 
 	// read pin; if low, device is present, not present otherwise
-	ibutton_found = !(!!(PINB & _BV(pin)));
+	ibutton_found = !pin_high(pin);
 
 	// wait remainder of reset/search duration, with wire high
 	_delay_us(480);
@@ -74,24 +118,13 @@ int find_ibutton(int pin)
 void read_ibutton_serial(int pin) 
 {
 	// send read ROM command
-	DDRB = 0xEF;
+	set_pin_for_output(pin);
 	int i;
 
 	for(i = 0; i<8; i++)
 	{
-        	DDRB = 0xEF;
-		PORTB &= ~_BV(pin);
-        	_delay_us(5);
-        	if(!(ONEWIRE_READ_COMMAND & (1 << i)))
-        	{
-                	_delay_us(50);
-        	}
-        	PORTB |= _BV(pin);
-		_delay_us(5);
-        	if(ONEWIRE_READ_COMMAND & (1 << i))
-        	{
-                	_delay_us(50);
-        	}	
+		write_bit(pin, ONEWIRE_READ_COMMAND & (1 << i));
+			
 	}
 
 	// read serial number from ibutton (8b CRC + 48b serial address + 8b device type identifier)
@@ -102,15 +135,15 @@ void read_ibutton_serial(int pin)
 		
 		for(k = 0; k < 4; k++)
 		{
-			DDRB = 0xEF;
+			set_pin_for_output(pin);
 
 			// pull wire low for 1-15 us
-			PORTB &= ~_BV(pin);
+			pull_low(pin);
 			_delay_us(5);
 
 			// put wire high so device can pull it down
-			PORTB |= _BV(pin);
-			DDRB = 0xE9;
+			push_high(pin);
+			set_pin_for_input(pin);
 
 			// wait for device to pull down wire (or not)
 			_delay_us(5);
@@ -121,9 +154,10 @@ void read_ibutton_serial(int pin)
 			// wait for device to release line
 			_delay_us(50);
 
-			DDRB = 0xEF;
+			set_pin_for_output(pin);
+
 			// pull wire high for recovery period
-			PORTB |= _BV(pin);
+			push_high(pin);
 			_delay_us(15);
 
 			// bit is zeroed to begin with
@@ -154,8 +188,6 @@ int main (void)
     while(1)
     {
 
-		serial_write_string("woop woop woop woop woop!");
-		
 		if(find_ibutton(1))
 		{
 			read_ibutton_serial(1);			
@@ -188,6 +220,10 @@ int main (void)
 
 void ioinit (void)
 {
+    //1 = output, 0 = input
+    DDRB = 0xED; //PB4 = MISO, PB1 = iButton reader pin 
+    DDRD = 0xFE; //PORTD (RX on PD0)
+
     //USART Baud rate: 4800
     UBRRH = MYUBRR >> 8;
     UBRRL = MYUBRR;
